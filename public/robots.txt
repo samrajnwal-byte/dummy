@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap:https://dummy-eta-gilt.vercel.app/
+Sitemap:https://dummy-eta-gilt.vercel.app/sitemap.xml
