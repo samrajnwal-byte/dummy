@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://alphafuels.netlify.app/sitemap.xml
+Sitemap:https://dummy-eta-gilt.vercel.app/

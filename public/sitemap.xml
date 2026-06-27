@@ -1,28 +1,28 @@
-<?xml version="1.0" encoding="UTF-8"?>
-		<!--	created with www.mysitemapgenerator.com	-->
-		<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url>
-	<loc>https://alphafuels.netlify.app/</loc>
+	<loc>https://dummy-eta-gilt.vercel.app/</loc>
 	<lastmod>2026-06-24T10:18:23+01:00</lastmod>
 	<priority>1.0</priority>
 </url>
 <url>
-	<loc>https://alphafuels.netlify.app/products</loc>
+	<loc>https://dummy-eta-gilt.vercel.app/products</loc>
 	<lastmod>2026-06-24T10:18:23+01:00</lastmod>
 	<priority>1.0</priority>
 </url>
 <url>
-	<loc>https://alphafuels.netlify.app/about</loc>
+	<loc>https://dummy-eta-gilt.vercel.app/about</loc>
 	<lastmod>2026-06-24T10:18:23+01:00</lastmod>
 	<priority>1.0</priority>
 </url>
 <url>
-	<loc>https://alphafuels.netlify.app/blog</loc>
+	<loc>https://dummy-eta-gilt.vercel.app/blog</loc>
 	<lastmod>2026-06-24T10:18:23+01:00</lastmod>
 	<priority>1.0</priority>
 </url>
 <url>
-	<loc>https://alphafuels.netlify.app/contact</loc>
+	<loc>https://dummy-eta-gilt.vercel.app/contact</loc>
 	<lastmod>2026-06-24T10:18:23+01:00</lastmod>
 	<priority>1.0</priority>
 </url>
