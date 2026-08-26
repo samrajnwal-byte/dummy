@@ -29,7 +29,7 @@ export function Home() {
             Fuel Your Strength. Power Your Performance.
           </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-8 max-w-4xl text-white">
-            Unleash Your <span className="text-brand">True Potential</span>
+            Premium Sports Nutrition & <span className="text-brand">Supplements</span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mb-10 leading-relaxed">
             Premium sports nutrition designed to help athletes, fitness enthusiasts, and gym-goers achieve their fitness goals.
