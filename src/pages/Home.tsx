@@ -16,30 +16,7 @@ export function Home() {
       <Helmet>
         <title>AlphaFuel | Premium Sports Nutrition & Supplements</title>
         <meta name="description" content="Shop premium sports nutrition supplements from AlphaFuel, including whey protein, creatine monohydrate and mass gainer for fitness and performance." />
-<script type="application/ld+json">
-  {JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "What is AlphaFuel?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "AlphaFuel is a sports nutrition brand offering supplements such as whey protein, creatine monohydrate and mass gainer."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What products does AlphaFuel offer?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "AlphaFuel offers whey protein, creatine monohydrate and mass gainer products for fitness and performance."
-        }
-      }
-    ]
-  })}
-</script>
+
       </Helmet>
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-zinc-950 pt-24 pb-32">
