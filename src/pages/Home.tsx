@@ -15,7 +15,7 @@ export function Home() {
     <div className="flex flex-col min-h-screen">
       <Helmet>
         <title>AlphaFuel | Premium Sports Nutrition & Supplements</title>
-        <meta name="description" content="Fuel your strength and power your performance with AlphaFuel. High-quality, third-party tested sports nutrition supplements for fitness enthusiasts." />
+        <meta name="description" content="Shop premium sports nutrition supplements from AlphaFuel, including whey protein, creatine monohydrate and mass gainer for fitness and performance." />
       </Helmet>
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-zinc-950 pt-24 pb-32">
