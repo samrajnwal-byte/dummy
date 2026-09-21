@@ -1,0 +1,1440 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import sqlite3
+import re
+from datetime import date
+
+
+# =========================================================
+# DATABASE
+# =========================================================
+
+DATABASE_NAME = "blood_donation.db"
+
+BLOOD_GROUPS = [
+    "A+", "A-", "B+", "B-",
+    "AB+", "AB-", "O+", "O-"
+]
+
+
+def connect_database():
+    return sqlite3.connect(DATABASE_NAME)
+
+
+def create_database():
+    connection = connect_database()
+    cursor = connection.cursor()
+
+    # Donor table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS donors (
+            donor_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            age INTEGER NOT NULL,
+            gender TEXT NOT NULL,
+            blood_group TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            city TEXT NOT NULL,
+            last_donation TEXT
+        )
+    """)
+
+    # Donation table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS donations (
+            donation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            donor_id INTEGER NOT NULL,
+            donation_date TEXT NOT NULL,
+            units INTEGER NOT NULL,
+            FOREIGN KEY (donor_id) REFERENCES donors(donor_id)
+        )
+    """)
+
+    # Blood inventory table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            blood_group TEXT PRIMARY KEY,
+            units INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # Blood request table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS requests (
+            request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_name TEXT NOT NULL,
+            hospital TEXT NOT NULL,
+            blood_group TEXT NOT NULL,
+            units INTEGER NOT NULL,
+            contact TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Pending',
+            request_date TEXT NOT NULL
+        )
+    """)
+
+    # Add all blood groups to inventory
+    for group in BLOOD_GROUPS:
+        cursor.execute("""
+            INSERT OR IGNORE INTO inventory (blood_group, units)
+            VALUES (?, 0)
+        """, (group,))
+
+    connection.commit()
+    connection.close()
+
+
+# =========================================================
+# MAIN APPLICATION
+# =========================================================
+
+class BloodDonationSystem:
+
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Blood Donation Management System")
+        self.root.geometry("1200x720")
+        self.root.minsize(1050, 650)
+
+        self.selected_donor_id = None
+
+        self.setup_style()
+        self.create_variables()
+        self.create_interface()
+
+        self.refresh_dashboard()
+        self.load_donors()
+        self.load_inventory()
+        self.load_requests()
+
+    # -----------------------------------------------------
+    # STYLE
+    # -----------------------------------------------------
+
+    def setup_style(self):
+        style = ttk.Style()
+
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure(
+            "Treeview",
+            rowheight=30,
+            font=("Arial", 10)
+        )
+
+        style.configure(
+            "Treeview.Heading",
+            font=("Arial", 10, "bold")
+        )
+
+        style.configure(
+            "TButton",
+            font=("Arial", 10),
+            padding=7
+        )
+
+        style.configure(
+            "TLabel",
+            font=("Arial", 10)
+        )
+
+        style.configure(
+            "TNotebook.Tab",
+            font=("Arial", 10, "bold"),
+            padding=[15, 8]
+        )
+
+    # -----------------------------------------------------
+    # VARIABLES
+    # -----------------------------------------------------
+
+    def create_variables(self):
+
+        # Donor variables
+        self.name_var = tk.StringVar()
+        self.age_var = tk.StringVar()
+        self.gender_var = tk.StringVar()
+        self.blood_group_var = tk.StringVar()
+        self.phone_var = tk.StringVar()
+        self.city_var = tk.StringVar()
+        self.last_donation_var = tk.StringVar()
+
+        # Search variables
+        self.search_var = tk.StringVar()
+        self.search_blood_var = tk.StringVar()
+
+        # Request variables
+        self.patient_var = tk.StringVar()
+        self.hospital_var = tk.StringVar()
+        self.request_blood_var = tk.StringVar()
+        self.request_units_var = tk.StringVar()
+        self.request_contact_var = tk.StringVar()
+
+    # -----------------------------------------------------
+    # MAIN INTERFACE
+    # -----------------------------------------------------
+
+    def create_interface(self):
+
+        # Header
+        header = tk.Frame(
+            self.root,
+            bg="#17365D",
+            height=75
+        )
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        title = tk.Label(
+            header,
+            text="Blood Donation Management System",
+            bg="#17365D",
+            fg="white",
+            font=("Arial", 22, "bold")
+        )
+        title.pack(side="left", padx=25, pady=18)
+
+        subtitle = tk.Label(
+            header,
+            text="Blood Bank Administration",
+            bg="#17365D",
+            fg="#D9E6F2",
+            font=("Arial", 10)
+        )
+        subtitle.pack(side="right", padx=25)
+
+        # Notebook
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(
+            fill="both",
+            expand=True,
+            padx=15,
+            pady=15
+        )
+
+        self.dashboard_tab = ttk.Frame(self.notebook)
+        self.donor_tab = ttk.Frame(self.notebook)
+        self.inventory_tab = ttk.Frame(self.notebook)
+        self.request_tab = ttk.Frame(self.notebook)
+        self.emergency_tab = ttk.Frame(self.notebook)
+
+        self.notebook.add(
+            self.dashboard_tab,
+            text="Dashboard"
+        )
+        self.notebook.add(
+            self.donor_tab,
+            text="Donor Management"
+        )
+        self.notebook.add(
+            self.inventory_tab,
+            text="Blood Inventory"
+        )
+        self.notebook.add(
+            self.request_tab,
+            text="Blood Requests"
+        )
+        self.notebook.add(
+            self.emergency_tab,
+            text="Emergency Finder"
+        )
+
+        self.create_dashboard()
+        self.create_donor_tab()
+        self.create_inventory_tab()
+        self.create_request_tab()
+        self.create_emergency_tab()
+
+    # =====================================================
+    # DASHBOARD
+    # =====================================================
+
+    def create_dashboard(self):
+
+        heading = tk.Label(
+            self.dashboard_tab,
+            text="Dashboard",
+            font=("Arial", 20, "bold"),
+            fg="#17365D"
+        )
+        heading.pack(anchor="w", padx=20, pady=(20, 5))
+
+        description = tk.Label(
+            self.dashboard_tab,
+            text="Overview of donors, blood stock and requests",
+            font=("Arial", 10),
+            fg="#666666"
+        )
+        description.pack(anchor="w", padx=20)
+
+        cards_frame = tk.Frame(
+            self.dashboard_tab,
+            bg="#F4F6F8"
+        )
+        cards_frame.pack(
+            fill="x",
+            padx=20,
+            pady=25
+        )
+
+        self.dashboard_values = []
+
+        card_titles = [
+            "Registered Donors",
+            "Blood Units",
+            "Pending Requests",
+            "Donations"
+        ]
+
+        for title in card_titles:
+
+            card = tk.Frame(
+                cards_frame,
+                bg="white",
+                highlightbackground="#D5DDE5",
+                highlightthickness=1
+            )
+            card.pack(
+                side="left",
+                fill="both",
+                expand=True,
+                padx=8,
+                ipady=18
+            )
+
+            tk.Label(
+                card,
+                text=title,
+                bg="white",
+                fg="#666666",
+                font=("Arial", 10)
+            ).pack(pady=(12, 5))
+
+            value_label = tk.Label(
+                card,
+                text="0",
+                bg="white",
+                fg="#17365D",
+                font=("Arial", 25, "bold")
+            )
+            value_label.pack()
+
+            self.dashboard_values.append(value_label)
+
+        # Quick information
+        info_frame = ttk.LabelFrame(
+            self.dashboard_tab,
+            text="System Information"
+        )
+        info_frame.pack(
+            fill="both",
+            expand=True,
+            padx=30,
+            pady=10
+        )
+
+        info = """
+Blood Donation Management System
+
+This application helps manage:
+
+• Registered blood donors
+• Blood donation records
+• Blood inventory
+• Blood requests
+• Emergency donor searching
+
+The application uses Python Tkinter for the graphical interface
+and SQLite for storing the information locally.
+"""
+
+        tk.Label(
+            info_frame,
+            text=info,
+            justify="left",
+            anchor="nw",
+            font=("Arial", 11),
+            fg="#333333"
+        ).pack(
+            anchor="nw",
+            padx=25,
+            pady=25
+        )
+
+    def refresh_dashboard(self):
+
+        connection = connect_database()
+        cursor = connection.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM donors")
+        donors = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COALESCE(SUM(units), 0) FROM inventory"
+        )
+        units = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM requests WHERE status = 'Pending'"
+        )
+        requests = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM donations")
+        donations = cursor.fetchone()[0]
+
+        connection.close()
+
+        values = [donors, units, requests, donations]
+
+        if hasattr(self, "dashboard_values"):
+            for label, value in zip(
+                self.dashboard_values,
+                values
+            ):
+                label.config(text=str(value))
+
+    # =====================================================
+    # DONOR MANAGEMENT
+    # =====================================================
+
+    def create_donor_tab(self):
+
+        heading = tk.Label(
+            self.donor_tab,
+            text="Donor Management",
+            font=("Arial", 18, "bold"),
+            fg="#17365D"
+        )
+        heading.pack(anchor="w", padx=20, pady=15)
+
+        form_frame = ttk.LabelFrame(
+            self.donor_tab,
+            text="Donor Registration"
+        )
+        form_frame.pack(
+            fill="x",
+            padx=20,
+            pady=5
+        )
+
+        labels = [
+            ("Name", self.name_var),
+            ("Age", self.age_var),
+            ("Gender", self.gender_var),
+            ("Blood Group", self.blood_group_var),
+            ("Phone", self.phone_var),
+            ("City", self.city_var),
+            ("Last Donation", self.last_donation_var)
+        ]
+
+        for index, (label, variable) in enumerate(labels):
+
+            row = index // 4
+            column = index % 4
+
+            ttk.Label(
+                form_frame,
+                text=label
+            ).grid(
+                row=row * 2,
+                column=column,
+                padx=10,
+                pady=(10, 3),
+                sticky="w"
+            )
+
+            if label == "Gender":
+
+                entry = ttk.Combobox(
+                    form_frame,
+                    textvariable=variable,
+                    values=["Male", "Female", "Other"],
+                    state="readonly",
+                    width=20
+                )
+
+            elif label == "Blood Group":
+
+                entry = ttk.Combobox(
+                    form_frame,
+                    textvariable=variable,
+                    values=BLOOD_GROUPS,
+                    state="readonly",
+                    width=20
+                )
+
+            else:
+
+                entry = ttk.Entry(
+                    form_frame,
+                    textvariable=variable,
+                    width=23
+                )
+
+            entry.grid(
+                row=row * 2 + 1,
+                column=column,
+                padx=10,
+                pady=(0, 10),
+                sticky="w"
+            )
+
+        button_frame = tk.Frame(form_frame)
+        button_frame.grid(
+            row=4,
+            column=0,
+            columnspan=4,
+            pady=10
+        )
+
+        ttk.Button(
+            button_frame,
+            text="Save Donor",
+            command=self.add_donor
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="Update",
+            command=self.update_donor
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="Delete",
+            command=self.delete_donor
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="Clear",
+            command=self.clear_donor_form
+        ).pack(side="left", padx=5)
+
+        # Search
+        search_frame = ttk.LabelFrame(
+            self.donor_tab,
+            text="Search Donors"
+        )
+        search_frame.pack(
+            fill="x",
+            padx=20,
+            pady=10
+        )
+
+        ttk.Label(
+            search_frame,
+            text="Search Name:"
+        ).pack(side="left", padx=10, pady=10)
+
+        ttk.Entry(
+            search_frame,
+            textvariable=self.search_var,
+            width=25
+        ).pack(side="left", padx=5)
+
+        ttk.Label(
+            search_frame,
+            text="Blood Group:"
+        ).pack(side="left", padx=10)
+
+        ttk.Combobox(
+            search_frame,
+            textvariable=self.search_blood_var,
+            values=["All"] + BLOOD_GROUPS,
+            state="readonly",
+            width=12
+        ).pack(side="left", padx=5)
+
+        self.search_blood_var.set("All")
+
+        ttk.Button(
+            search_frame,
+            text="Search",
+            command=self.search_donors
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            search_frame,
+            text="Show All",
+            command=self.load_donors
+        ).pack(side="left", padx=5)
+
+        # Donor table
+        table_frame = ttk.Frame(self.donor_tab)
+        table_frame.pack(
+            fill="both",
+            expand=True,
+            padx=20,
+            pady=5
+        )
+
+        columns = (
+            "id",
+            "name",
+            "age",
+            "gender",
+            "blood",
+            "phone",
+            "city",
+            "last"
+        )
+
+        self.donor_tree = ttk.Treeview(
+            table_frame,
+            columns=columns,
+            show="headings"
+        )
+
+        headings = {
+            "id": "ID",
+            "name": "Name",
+            "age": "Age",
+            "gender": "Gender",
+            "blood": "Blood Group",
+            "phone": "Phone",
+            "city": "City",
+            "last": "Last Donation"
+        }
+
+        widths = {
+            "id": 50,
+            "name": 150,
+            "age": 60,
+            "gender": 90,
+            "blood": 100,
+            "phone": 120,
+            "city": 120,
+            "last": 120
+        }
+
+        for column in columns:
+            self.donor_tree.heading(
+                column,
+                text=headings[column]
+            )
+            self.donor_tree.column(
+                column,
+                width=widths[column],
+                anchor="center"
+            )
+
+        scrollbar = ttk.Scrollbar(
+            table_frame,
+            orient="vertical",
+            command=self.donor_tree.yview
+        )
+
+        self.donor_tree.configure(
+            yscrollcommand=scrollbar.set
+        )
+
+        self.donor_tree.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
+        scrollbar.pack(
+            side="right",
+            fill="y"
+        )
+
+        self.donor_tree.bind(
+            "<ButtonRelease-1>",
+            self.select_donor
+        )
+
+    # -----------------------------------------------------
+    # VALIDATE DONOR
+    # -----------------------------------------------------
+
+    def validate_donor(self):
+
+        name = self.name_var.get().strip()
+        age = self.age_var.get().strip()
+        gender = self.gender_var.get().strip()
+        blood = self.blood_group_var.get().strip()
+        phone = self.phone_var.get().strip()
+        city = self.city_var.get().strip()
+
+        if not name:
+            messagebox.showerror(
+                "Validation Error",
+                "Please enter donor name."
+            )
+            return False
+
+        if not age.isdigit():
+            messagebox.showerror(
+                "Validation Error",
+                "Age must be a number."
+            )
+            return False
+
+        age = int(age)
+
+        if age < 18 or age > 65:
+            messagebox.showerror(
+                "Validation Error",
+                "Donor age should be between 18 and 65."
+            )
+            return False
+
+        if not gender:
+            messagebox.showerror(
+                "Validation Error",
+                "Please select gender."
+            )
+            return False
+
+        if blood not in BLOOD_GROUPS:
+            messagebox.showerror(
+                "Validation Error",
+                "Please select a valid blood group."
+            )
+            return False
+
+        if not re.fullmatch(r"[0-9]{10}", phone):
+            messagebox.showerror(
+                "Validation Error",
+                "Phone number must contain exactly 10 digits."
+            )
+            return False
+
+        if not city:
+            messagebox.showerror(
+                "Validation Error",
+                "Please enter city."
+            )
+            return False
+
+        return True
+
+    # -----------------------------------------------------
+    # ADD DONOR
+    # -----------------------------------------------------
+
+    def add_donor(self):
+
+        if not self.validate_donor():
+            return
+
+        connection = connect_database()
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO donors
+            (name, age, gender, blood_group, phone, city, last_donation)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            self.name_var.get().strip(),
+            int(self.age_var.get()),
+            self.gender_var.get(),
+            self.blood_group_var.get(),
+            self.phone_var.get(),
+            self.city_var.get().strip(),
+            self.last_donation_var.get().strip()
+        ))
+
+        connection.commit()
+        connection.close()
+
+        messagebox.showinfo(
+            "Success",
+            "Donor registered successfully."
+        )
+
+        self.clear_donor_form()
+        self.load_donors()
+        self.refresh_dashboard()
+
+    # -----------------------------------------------------
+    # LOAD DONORS
+    # -----------------------------------------------------
+
+    def load_donors(self):
+
+        for item in self.donor_tree.get_children():
+            self.donor_tree.delete(item)
+
+        connection = connect_database()
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT donor_id, name, age, gender,
+                   blood_group, phone, city, last_donation
+            FROM donors
+            ORDER BY donor_id DESC
+        """)
+
+        records = cursor.fetchall()
+        connection.close()
+
+        for record in records:
+            self.donor_tree.insert(
+                "",
+                "end",
+                values=record
+            )
+
+    # -----------------------------------------------------
+    # SEARCH DONORS
+    # -----------------------------------------------------
+
+    def search_donors(self):
+
+        name = self.search_var.get().strip()
+        blood = self.search_blood_var.get().strip()
+
+        query = """
+            SELECT donor_id, name, age, gender, blood_group, phone, city, last_donation
+            FROM donors
+            WHERE name LIKE ?
+        """
+        params = [f"%{name}%"]
+
+        if blood and blood != "All":
+            query += " AND blood_group = ?"
+            params.append(blood)
+
+        query += " ORDER BY donor_id DESC"
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute(query, params)
+        records = cursor.fetchall()
+        connection.close()
+
+        for item in self.donor_tree.get_children():
+            self.donor_tree.delete(item)
+
+        for record in records:
+            self.donor_tree.insert("", "end", values=record)
+
+    # -----------------------------------------------------
+    # SELECT / UPDATE / DELETE DONOR
+    # -----------------------------------------------------
+
+    def select_donor(self, event=None):
+        selected = self.donor_tree.selection()
+        if not selected:
+            return
+
+        values = self.donor_tree.item(selected[0], "values")
+        if not values:
+            return
+
+        self.selected_donor_id = int(values[0])
+        self.name_var.set(values[1])
+        self.age_var.set(values[2])
+        self.gender_var.set(values[3])
+        self.blood_group_var.set(values[4])
+        self.phone_var.set(values[5])
+        self.city_var.set(values[6])
+        self.last_donation_var.set(values[7])
+
+    def update_donor(self):
+        if self.selected_donor_id is None:
+            messagebox.showwarning("Select Donor", "Please select a donor to update.")
+            return
+
+        if not self.validate_donor():
+            return
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute("""
+            UPDATE donors
+            SET name=?, age=?, gender=?, blood_group=?, phone=?, city=?, last_donation=?
+            WHERE donor_id=?
+        """, (
+            self.name_var.get().strip(),
+            int(self.age_var.get()),
+            self.gender_var.get(),
+            self.blood_group_var.get(),
+            self.phone_var.get().strip(),
+            self.city_var.get().strip(),
+            self.last_donation_var.get().strip(),
+            self.selected_donor_id
+        ))
+        connection.commit()
+        connection.close()
+
+        messagebox.showinfo("Success", "Donor updated successfully.")
+        self.clear_donor_form()
+        self.load_donors()
+        self.refresh_dashboard()
+        self.load_inventory()
+
+    def delete_donor(self):
+        if self.selected_donor_id is None:
+            messagebox.showwarning("Select Donor", "Please select a donor to delete.")
+            return
+
+        if not messagebox.askyesno("Confirm Delete", "Delete the selected donor?"):
+            return
+
+        connection = connect_database()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM donations WHERE donor_id=?",
+            (self.selected_donor_id,)
+        )
+        donation_count = cursor.fetchone()[0]
+
+        if donation_count:
+            connection.close()
+            messagebox.showerror(
+                "Cannot Delete",
+                "This donor has donation records. Delete the donation records first."
+            )
+            return
+
+        cursor.execute(
+            "DELETE FROM donors WHERE donor_id=?",
+            (self.selected_donor_id,)
+        )
+        connection.commit()
+        connection.close()
+
+        messagebox.showinfo("Success", "Donor deleted successfully.")
+        self.clear_donor_form()
+        self.load_donors()
+        self.refresh_dashboard()
+
+    def clear_donor_form(self):
+        self.selected_donor_id = None
+        self.name_var.set("")
+        self.age_var.set("")
+        self.gender_var.set("")
+        self.blood_group_var.set("")
+        self.phone_var.set("")
+        self.city_var.set("")
+        self.last_donation_var.set("")
+
+
+    # =====================================================
+    # BLOOD INVENTORY
+    # =====================================================
+
+    def create_inventory_tab(self):
+        heading = tk.Label(
+            self.inventory_tab,
+            text="Blood Inventory",
+            font=("Arial", 18, "bold"),
+            fg="#17365D"
+        )
+        heading.pack(anchor="w", padx=20, pady=15)
+
+        form = ttk.LabelFrame(self.inventory_tab, text="Add Blood Units")
+        form.pack(fill="x", padx=20, pady=5)
+
+        ttk.Label(form, text="Blood Group:").grid(
+            row=0, column=0, padx=10, pady=12, sticky="w"
+        )
+        self.inventory_group_var = tk.StringVar()
+        inventory_combo = ttk.Combobox(
+            form,
+            textvariable=self.inventory_group_var,
+            values=BLOOD_GROUPS,
+            state="readonly",
+            width=15
+        )
+        inventory_combo.grid(row=0, column=1, padx=10, pady=12)
+
+        ttk.Label(form, text="Units:").grid(
+            row=0, column=2, padx=10, pady=12, sticky="w"
+        )
+        self.inventory_units_var = tk.StringVar()
+        ttk.Entry(
+            form,
+            textvariable=self.inventory_units_var,
+            width=15
+        ).grid(row=0, column=3, padx=10, pady=12)
+
+        ttk.Button(
+            form, text="Add Units", command=self.add_inventory
+        ).grid(row=0, column=4, padx=10, pady=12)
+
+        ttk.Button(
+            form, text="Refresh", command=self.load_inventory
+        ).grid(row=0, column=5, padx=10, pady=12)
+
+        table = ttk.Frame(self.inventory_tab)
+        table.pack(fill="both", expand=True, padx=20, pady=10)
+
+        self.inventory_tree = ttk.Treeview(
+            table,
+            columns=("blood", "units"),
+            show="headings"
+        )
+        self.inventory_tree.heading("blood", text="Blood Group")
+        self.inventory_tree.heading("units", text="Available Units")
+        self.inventory_tree.column("blood", width=180, anchor="center")
+        self.inventory_tree.column("units", width=180, anchor="center")
+        self.inventory_tree.pack(fill="both", expand=True)
+
+    def add_inventory(self):
+        group = self.inventory_group_var.get().strip()
+        units_text = self.inventory_units_var.get().strip()
+
+        if group not in BLOOD_GROUPS:
+            messagebox.showerror("Validation Error", "Please select a blood group.")
+            return
+
+        if not units_text.isdigit() or int(units_text) <= 0:
+            messagebox.showerror("Validation Error", "Units must be a positive number.")
+            return
+
+        units = int(units_text)
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE inventory SET units = units + ? WHERE blood_group = ?",
+            (units, group)
+        )
+        connection.commit()
+        connection.close()
+
+        self.inventory_units_var.set("")
+        self.load_inventory()
+        self.refresh_dashboard()
+        messagebox.showinfo("Success", f"{units} unit(s) added to {group} inventory.")
+
+    def load_inventory(self):
+        if not hasattr(self, "inventory_tree"):
+            return
+
+        for item in self.inventory_tree.get_children():
+            self.inventory_tree.delete(item)
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT blood_group, units FROM inventory ORDER BY blood_group"
+        )
+        records = cursor.fetchall()
+        connection.close()
+
+        for record in records:
+            self.inventory_tree.insert("", "end", values=record)
+
+
+    # =====================================================
+    # BLOOD REQUESTS
+    # =====================================================
+
+    def create_request_tab(self):
+        heading = tk.Label(
+            self.request_tab,
+            text="Blood Requests",
+            font=("Arial", 18, "bold"),
+            fg="#17365D"
+        )
+        heading.pack(anchor="w", padx=20, pady=15)
+
+        form = ttk.LabelFrame(self.request_tab, text="New Blood Request")
+        form.pack(fill="x", padx=20, pady=5)
+
+        fields = [
+            ("Patient Name", self.patient_var),
+            ("Hospital", self.hospital_var),
+            ("Blood Group", self.request_blood_var),
+            ("Units", self.request_units_var),
+            ("Contact", self.request_contact_var)
+        ]
+
+        for i, (label, var) in enumerate(fields):
+            ttk.Label(form, text=label).grid(
+                row=0, column=i, padx=8, pady=(10, 3), sticky="w"
+            )
+
+            if label == "Blood Group":
+                widget = ttk.Combobox(
+                    form,
+                    textvariable=var,
+                    values=BLOOD_GROUPS,
+                    state="readonly",
+                    width=13
+                )
+            else:
+                widget = ttk.Entry(form, textvariable=var, width=18)
+
+            widget.grid(row=1, column=i, padx=8, pady=(0, 10))
+
+        buttons = ttk.Frame(form)
+        buttons.grid(row=2, column=0, columnspan=5, pady=8)
+
+        ttk.Button(
+            buttons, text="Submit Request", command=self.add_request
+        ).pack(side="left", padx=5)
+        ttk.Button(
+            buttons, text="Fulfill Selected", command=self.fulfill_request
+        ).pack(side="left", padx=5)
+        ttk.Button(
+            buttons, text="Cancel Selected", command=self.cancel_request
+        ).pack(side="left", padx=5)
+        ttk.Button(
+            buttons, text="Clear", command=self.clear_request_form
+        ).pack(side="left", padx=5)
+
+        table = ttk.Frame(self.request_tab)
+        table.pack(fill="both", expand=True, padx=20, pady=10)
+
+        columns = (
+            "id", "patient", "hospital", "blood",
+            "units", "contact", "status", "date"
+        )
+
+        self.request_tree = ttk.Treeview(
+            table, columns=columns, show="headings"
+        )
+
+        headings = {
+            "id": "ID",
+            "patient": "Patient",
+            "hospital": "Hospital",
+            "blood": "Blood Group",
+            "units": "Units",
+            "contact": "Contact",
+            "status": "Status",
+            "date": "Date"
+        }
+
+        widths = {
+            "id": 50, "patient": 130, "hospital": 150,
+            "blood": 90, "units": 70, "contact": 110,
+            "status": 90, "date": 100
+        }
+
+        for column in columns:
+            self.request_tree.heading(column, text=headings[column])
+            self.request_tree.column(
+                column, width=widths[column], anchor="center"
+            )
+
+        scrollbar = ttk.Scrollbar(
+            table, orient="vertical", command=self.request_tree.yview
+        )
+        self.request_tree.configure(yscrollcommand=scrollbar.set)
+        self.request_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def validate_request(self):
+        patient = self.patient_var.get().strip()
+        hospital = self.hospital_var.get().strip()
+        blood = self.request_blood_var.get().strip()
+        units = self.request_units_var.get().strip()
+        contact = self.request_contact_var.get().strip()
+
+        if not patient or not hospital:
+            messagebox.showerror(
+                "Validation Error",
+                "Please enter patient name and hospital."
+            )
+            return False
+
+        if blood not in BLOOD_GROUPS:
+            messagebox.showerror(
+                "Validation Error",
+                "Please select a valid blood group."
+            )
+            return False
+
+        if not units.isdigit() or int(units) <= 0:
+            messagebox.showerror(
+                "Validation Error",
+                "Units must be a positive number."
+            )
+            return False
+
+        if not re.fullmatch(r"[0-9]{10}", contact):
+            messagebox.showerror(
+                "Validation Error",
+                "Contact number must contain exactly 10 digits."
+            )
+            return False
+
+        return True
+
+    def add_request(self):
+        if not self.validate_request():
+            return
+
+        connection = connect_database()
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO requests
+            (patient_name, hospital, blood_group, units, contact, status, request_date)
+            VALUES (?, ?, ?, ?, ?, 'Pending', ?)
+        """, (
+            self.patient_var.get().strip(),
+            self.hospital_var.get().strip(),
+            self.request_blood_var.get(),
+            int(self.request_units_var.get()),
+            self.request_contact_var.get().strip(),
+            date.today().isoformat()
+        ))
+
+        connection.commit()
+        connection.close()
+
+        self.clear_request_form()
+        self.load_requests()
+        self.refresh_dashboard()
+
+        messagebox.showinfo("Success", "Blood request submitted successfully.")
+
+    def load_requests(self):
+        if not hasattr(self, "request_tree"):
+            return
+
+        for item in self.request_tree.get_children():
+            self.request_tree.delete(item)
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute("""
+            SELECT request_id, patient_name, hospital, blood_group,
+                   units, contact, status, request_date
+            FROM requests
+            ORDER BY request_id DESC
+        """)
+        records = cursor.fetchall()
+        connection.close()
+
+        for record in records:
+            self.request_tree.insert("", "end", values=record)
+
+    def get_selected_request(self):
+        selected = self.request_tree.selection()
+        if not selected:
+            messagebox.showwarning(
+                "Select Request", "Please select a request first."
+            )
+            return None
+
+        values = self.request_tree.item(selected[0], "values")
+        return values
+
+    def fulfill_request(self):
+        values = self.get_selected_request()
+        if not values:
+            return
+
+        request_id = int(values[0])
+        blood = values[3]
+        units = int(values[4])
+        status = values[6]
+
+        if status != "Pending":
+            messagebox.showwarning(
+                "Invalid Request", "Only pending requests can be fulfilled."
+            )
+            return
+
+        connection = connect_database()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT units FROM inventory WHERE blood_group=?",
+            (blood,)
+        )
+        available = cursor.fetchone()[0]
+
+        if available < units:
+            connection.close()
+            messagebox.showerror(
+                "Insufficient Stock",
+                f"Only {available} unit(s) of {blood} are available."
+            )
+            return
+
+        cursor.execute(
+            "UPDATE inventory SET units=units-? WHERE blood_group=?",
+            (units, blood)
+        )
+        cursor.execute(
+            "UPDATE requests SET status='Fulfilled' WHERE request_id=?",
+            (request_id,)
+        )
+
+        connection.commit()
+        connection.close()
+
+        self.load_requests()
+        self.load_inventory()
+        self.refresh_dashboard()
+        messagebox.showinfo("Success", "Request fulfilled successfully.")
+
+    def cancel_request(self):
+        values = self.get_selected_request()
+        if not values:
+            return
+
+        request_id = int(values[0])
+
+        if values[6] != "Pending":
+            messagebox.showwarning(
+                "Invalid Request", "Only pending requests can be cancelled."
+            )
+            return
+
+        if not messagebox.askyesno(
+            "Confirm Cancel", "Cancel the selected request?"
+        ):
+            return
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE requests SET status='Cancelled' WHERE request_id=?",
+            (request_id,)
+        )
+        connection.commit()
+        connection.close()
+
+        self.load_requests()
+        self.refresh_dashboard()
+
+    def clear_request_form(self):
+        self.patient_var.set("")
+        self.hospital_var.set("")
+        self.request_blood_var.set("")
+        self.request_units_var.set("")
+        self.request_contact_var.set("")
+
+
+    # =====================================================
+    # EMERGENCY FINDER
+    # =====================================================
+
+    def create_emergency_tab(self):
+        heading = tk.Label(
+            self.emergency_tab,
+            text="Emergency Donor Finder",
+            font=("Arial", 18, "bold"),
+            fg="#17365D"
+        )
+        heading.pack(anchor="w", padx=20, pady=15)
+
+        form = ttk.LabelFrame(
+            self.emergency_tab,
+            text="Find Available Donors"
+        )
+        form.pack(fill="x", padx=20, pady=5)
+
+        ttk.Label(form, text="Blood Group:").pack(
+            side="left", padx=(10, 5), pady=12
+        )
+
+        self.emergency_blood_var = tk.StringVar()
+        ttk.Combobox(
+            form,
+            textvariable=self.emergency_blood_var,
+            values=BLOOD_GROUPS,
+            state="readonly",
+            width=15
+        ).pack(side="left", padx=5)
+
+        ttk.Label(form, text="City (optional):").pack(
+            side="left", padx=(15, 5)
+        )
+
+        self.emergency_city_var = tk.StringVar()
+        ttk.Entry(
+            form,
+            textvariable=self.emergency_city_var,
+            width=20
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            form, text="Find Donors", command=self.find_emergency_donors
+        ).pack(side="left", padx=10)
+
+        table = ttk.Frame(self.emergency_tab)
+        table.pack(fill="both", expand=True, padx=20, pady=10)
+
+        columns = ("id", "name", "blood", "phone", "city", "last")
+        self.emergency_tree = ttk.Treeview(
+            table, columns=columns, show="headings"
+        )
+
+        headings = {
+            "id": "ID",
+            "name": "Name",
+            "blood": "Blood Group",
+            "phone": "Phone",
+            "city": "City",
+            "last": "Last Donation"
+        }
+
+        for column in columns:
+            self.emergency_tree.heading(column, text=headings[column])
+            self.emergency_tree.column(column, width=130, anchor="center")
+
+        scrollbar = ttk.Scrollbar(
+            table, orient="vertical", command=self.emergency_tree.yview
+        )
+        self.emergency_tree.configure(yscrollcommand=scrollbar.set)
+        self.emergency_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def find_emergency_donors(self):
+        blood = self.emergency_blood_var.get().strip()
+        city = self.emergency_city_var.get().strip()
+
+        if blood not in BLOOD_GROUPS:
+            messagebox.showerror(
+                "Validation Error", "Please select a blood group."
+            )
+            return
+
+        query = """
+            SELECT donor_id, name, blood_group, phone, city, last_donation
+            FROM donors
+            WHERE blood_group=?
+        """
+        params = [blood]
+
+        if city:
+            query += " AND city LIKE ?"
+            params.append(f"%{city}%")
+
+        query += " ORDER BY name"
+
+        connection = connect_database()
+        cursor = connection.cursor()
+        cursor.execute(query, params)
+        records = cursor.fetchall()
+        connection.close()
+
+        for item in self.emergency_tree.get_children():
+            self.emergency_tree.delete(item)
+
+        for record in records:
+            self.emergency_tree.insert("", "end", values=record)
+
+        if not records:
+            messagebox.showinfo(
+                "No Donors Found",
+                f"No registered {blood} donor was found for the selected criteria."
+            )
+
+
+# =========================================================
+# START APPLICATION
+# =========================================================
+
+if __name__ == "__main__":
+    create_database()
+
+    root = tk.Tk()
+    app = BloodDonationSystem(root)
+    root.mainloop()
