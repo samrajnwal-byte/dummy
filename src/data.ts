@@ -1,12 +1,12 @@
 import { BlogPost, FAQ, Product, Review, Stat, TeamMember } from './types';
 import imgWhey from './assets/images/alpha_whey_pro_1782021243874.webp';
-import imgIsolate from './assets/images/alpha_isolate_x_1782021259934.jpg';
-import imgCreatine from './assets/images/alpha_creatine_1782021275132.jpg';
+import imgIsolate from './assets/images/alpha_isolate_x_1782021259934.webp';
+import imgCreatine from './assets/images/alpha_creatine_1782021275132.webp';
 import imgMassGainer from './assets/images/alpha_mass_gainer_1782021288363.webp';
 import imgPreWorkout from './assets/images/alpha_pre_workout_1782021301538.jpg';
-import imgBcaa from './assets/images/alpha_bcaa_recovery_1782021316539.jpg';
+import imgBcaa from './assets/images/alpha_bcaa_recovery_1782021316539.webp';
 import imgVitamins from './assets/images/alpha_multivitamin_1782021330487.jpg';
-import imgFishOil from './assets/images/alpha_fish_oil_1782021343652.jpg';
+import imgFishOil from './assets/images/alpha_fish_oil_1782021343652.webp';
 
 export const products: Product[] = [
   {
